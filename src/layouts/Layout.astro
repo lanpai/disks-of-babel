@@ -1,0 +1,31 @@
+---
+import Stripes from "@/components/Stripes.astro";
+import "@/styles/global.css";
+
+export interface Props {
+	title: string;
+  icon: string;
+}
+
+const { title, icon } = Astro.props;
+const heading = icon ? `${icon} ${title}` : title;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<title>{title}</title>
+	</head>
+	<body>
+    <Stripes />
+    <main>
+      <h1>{heading}</h1>
+      <slot />
+    </main>
+	</body>
+</html>
+<style is:global>
+</style>

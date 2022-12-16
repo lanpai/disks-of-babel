@@ -1,0 +1,417 @@
+---
+import Stripes from "@/components/Stripes.astro";
+
+import "@/styles/global.css";
+
+const { disk } = Astro.params;
+---
+
+<div class="terminal-container">
+  <Stripes />
+  <dob-disk data-content={disk} />
+</div>
+
+<script>
+  import { BASE, permutations, decode } from "@/utils/encoding";
+
+  const PERMUTATION_LENGTH = 2;
+  let numPermutations = 0;
+  for (let i = 1; i <= PERMUTATION_LENGTH; i++) {
+    numPermutations += Math.pow(BASE, i);
+  }
+
+  class Disk extends HTMLElement {
+    permutations = {} as Record<string, WebAssembly.Module | null>;
+    terminal;
+
+    constructor() {
+      super();
+
+      this.terminal = document.createElement("div");
+      this.terminal.classList.add("terminal");
+      this.appendChild(this.terminal);
+
+      const scanlines = document.createElement("div");
+      scanlines.classList.add("scanlines");
+      this.appendChild(scanlines);
+
+      const glare = document.createElement("div");
+      glare.classList.add("glare");
+      scanlines.appendChild(glare);
+
+      (async () => {
+        await this.drawText("> Initializing boot loader...");
+        await this.drawText("> Booting up systems...");
+        await this.drawText("> Mounting disks...");
+        await this.drawText(`> Found ${numPermutations} binary files.`, { speed: 150 });
+        await this.drawText(`
+██████  ██ ███████ ██   ██ ███████      ██████  ███████     ██████   █████  ██████  ███████ ██
+██   ██ ██ ██      ██  ██  ██          ██    ██ ██          ██   ██ ██   ██ ██   ██ ██      ██
+██   ██ ██ ███████ █████   ███████     ██    ██ █████       ██████  ███████ ██████  █████   ██
+██   ██ ██      ██ ██  ██       ██     ██    ██ ██          ██   ██ ██   ██ ██   ██ ██      ██
+██████  ██ ███████ ██   ██ ███████      ██████  ██          ██████  ██   ██ ██████  ███████ ███████
+          `, { speed: 1 });
+        this.drawMenu();
+      })();
+    }
+
+    async drawMenu() {
+      await this.drawText(`% export DATA="0x${this.dataset.content}..[`, { speed: 1 });
+      this.drawButtons(permutations(PERMUTATION_LENGTH));
+      await this.drawText("]\"", { speed: 1 });
+      await this.drawText("> Select a binary to execute...");
+    }
+
+    async drawButtons(buttons: IterableIterator<string>) {
+      let p = document.createElement("p");
+      p.className = "buttons"
+      this.terminal.prepend(p);
+
+      for (let button of buttons) {
+        const span = document.createElement("span");
+        span.classList.add("button");
+        span.classList.add("disabled");
+        p.appendChild(span);
+
+        let onClick = () => {};
+
+        (async () => {
+          try {
+            const module = await WebAssembly.compile(decode(this.dataset.content + button));
+            setTimeout(() => {
+              span.classList.remove("disabled");
+              onClick = async () => {
+                await this.drawCanvas(module);
+                // this.drawMenu();
+              };
+            }, 200);
+          } catch (e) {
+            setTimeout(() => {
+              span.classList.add("error");
+              setTimeout(() => {
+                span.remove();
+              }, 200);
+            }, 200);
+          }
+        })();
+
+        await this.drawText(button, {
+          speed: 1,
+          className: "button",
+          onClick: () => onClick(),
+          element: span,
+        });
+      }
+    }
+
+    drawText(content: string, options?: {
+      speed?: number;
+      className?: string;
+      onClick?: () => void;
+      element?: HTMLElement;
+    }) {
+      let p = document.createElement("p");
+
+      let {
+        speed = 50,
+        className,
+        onClick,
+        element,
+      } = options ?? {};
+
+      if (!element) {
+        element = p;
+        this.terminal.prepend(p);
+      }
+
+      if (className) {
+        element.classList.add(className);
+      }
+
+      return new Promise<HTMLElement>(async (res) => {
+        function append() {
+          if (!element) return;
+
+          if (content.length > 0) {
+            let [c, ...rest] = content.split("");
+            content = rest.join("");
+
+            switch (c) {
+              case "\n":
+                element.appendChild(document.createElement("br"));
+                break;
+              case " ":
+                element.appendChild(document.createTextNode(" "));
+                break;
+              default:
+                if (c) {
+                  element.appendChild(document.createTextNode(c));
+                }
+                break;
+            }
+
+            setTimeout(() => {
+              append();
+            }, speed);
+          } else {
+            if (onClick) {
+              element.onclick = onClick;
+            }
+            res(element);
+          }
+        }
+        append();
+      });
+    }
+
+    drawCanvas(module: WebAssembly.Module) {
+      this.terminal.scrollTo({ top: this.terminal.scrollHeight, behavior: "smooth" });
+
+      const width = 64;
+
+      const canvasContainer = document.createElement("div");
+      canvasContainer.classList.add("canvas-container");
+
+      const canvasBorder = document.createElement("div");
+      canvasBorder.classList.add("canvas-border");
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = width;
+      const canvasWidth = width * 4;
+      canvas.style.width = `${width * 4}px`;
+      canvas.style.height = "0";
+      canvas.style.imageRendering = "pixelated";
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        throw "Failed to get canvas context";
+      }
+
+      canvasContainer.appendChild(canvasBorder);
+      canvasContainer.appendChild(canvas);
+      this.terminal.prepend(canvasContainer);
+
+      const dataSize = width * width * 4;
+
+      const memSize = 1024 * 1024; // 1048576 bytes
+      const pageSize = Math.floor(memSize / 65536);
+      const memory = new WebAssembly.Memory({ initial: pageSize, maximum: pageSize });
+
+      const instance = WebAssembly.instantiate(module, { env: { memory } });
+
+      const initCanvas = () => {
+        instance.then(instance => {
+          const m = instance.exports.m as CallableFunction;
+
+          function render() {
+            const ptr = m();
+
+            const memory = instance.exports.memory as WebAssembly.Memory;
+            const data = new Uint8ClampedArray(memory.buffer, ptr, dataSize);
+            const img = new ImageData(data, width, width);
+
+            if (ctx) {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              ctx.putImageData(img, 0, 0);
+            }
+
+            requestAnimationFrame(render);
+          }
+
+          render();
+        });
+      }
+
+      return new Promise<void>(async (res) => {
+        let currHeight = 0;
+        function addRow() {
+          if (currHeight < canvasWidth) {
+            currHeight += canvasWidth / width;
+            canvas.style.height = `${currHeight}px`;
+
+            setTimeout(addRow, 30);
+          } else {
+            initCanvas();
+            setTimeout(() => {
+              res();
+            }, 200);
+          }
+        }
+        addRow();
+      });
+    }
+  }
+
+  customElements.define("dob-disk", Disk);
+</script>
+
+<style>
+  html, body {
+    @apply m-0 p-0;
+    @apply w-screen h-screen;
+  }
+  .terminal-container {
+    @apply m-0 p-0;
+    @apply w-screen h-screen;
+    @apply flex flex-col;
+  }
+</style>
+
+<style is:global>
+  ::-webkit-scrollbar {
+    @apply w-0.5;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-orange-400;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent rounded-sm;
+  }
+
+  dob-disk {
+    @apply flex-1;
+    @apply leading-none;
+    @apply bg-black;
+
+    @apply blur-[0.5px];
+
+    @apply absolute inset-0 top-12;
+
+    box-shadow: inset 0 0 max(50vw, 50vh) rgba(128, 73, 30, 0.2);
+  }
+
+  dob-disk .terminal {
+    @apply p-4;
+    @apply flex flex-col-reverse gap-2;
+    @apply max-h-full;
+
+    @apply overflow-auto;
+  }
+
+  dob-disk .scanlines {
+    @apply absolute h-full w-full bottom-0 left-0;
+    @apply pointer-events-none;
+    @apply overflow-hidden;
+
+    background: linear-gradient(
+      0deg,
+      rgba(0,0,0,0) 0%,
+      rgba(0,0,0,0) 60%,
+      rgba(0,0,0,0.5) 60%,
+      rgba(0,0,0,0.5) 100%);
+    background-size: 100% 4px;
+  }
+
+  dob-disk .glare {
+    @apply absolute inset-x-0 h-64;
+    @apply pointer-events-none;
+    @apply bg-blend-darken;
+    @apply -z-10;
+
+    background: linear-gradient(
+      0deg,
+      rgba(251,146,60,0) 0%,
+      rgba(251,146,60,0.5) 45%,
+      rgba(251,146,60,0.5) 55%,
+      rgba(251,146,60,0) 100%);
+    opacity: 0.4;
+
+    animation: glare 10s infinite ease-in-out;
+  }
+  @keyframes glare {
+    0% {
+      top: -16rem;
+    }
+    100% {
+      top: 100%;
+    }
+  }
+
+  dob-disk .buttons {
+    @apply flex flex-row flex-wrap;
+  }
+  dob-disk .buttons .button:before {
+    content: " ";
+  }
+  dob-disk .buttons .button:after:not(:last-child) {
+    content: ",";
+  }
+
+  dob-disk .button {
+    @apply cursor-pointer;
+    @apply font-normal;
+    @apply select-none;
+    @apply text-green-400;
+    @apply transition-colors duration-200;
+  }
+  dob-disk .button:hover {
+    @apply font-extrabold;
+  }
+  dob-disk .disabled {
+    @apply cursor-auto;
+    @apply text-gray-500;
+  }
+
+  dob-disk .error {
+    @apply text-red-400;
+  }
+
+  dob-disk .canvas-container {
+    @apply relative;
+    @apply self-start;
+  }
+
+  dob-disk .canvas-border {
+    @apply outline-orange-400 outline-2 outline -outline-offset-2;
+    @apply absolute w-full h-full -z-10;
+    @apply rounded;
+  }
+
+  dob-disk canvas {
+    @apply rounded;
+  }
+
+  dob-disk p {
+    @apply text-orange-400 break-all;
+    @apply font-mono;
+    @apply blur-[0.5px];
+    @apply whitespace-pre-wrap;
+    
+    animation: line 200ms linear;
+    max-height: unset;
+  }
+  @keyframes line {
+    from {
+      overflow: hidden;
+      max-height: 0;
+    }
+    to {
+      overflow: hidden;
+      max-height: 1rem;
+    }
+  }
+
+  dob-disk p:first-child::after {
+    font-weight: 900;
+    content: "█";
+    animation: blink 1s linear infinite;
+  }
+  @keyframes blink {
+    0% {
+      opacity: 1;
+    }
+    49% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+    80% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+</style>

@@ -1,0 +1,33 @@
+::selection {
+  @apply text-orange-800 bg-orange-400;
+}
+html {
+  font-family: system-ui, sans-serif;
+  background-color: #F6F6F6;
+  @apply text-gray-900;
+}
+main {
+  @apply mx-auto p-4;
+  @apply max-w-prose;
+}
+h1 {
+  @apply text-red-400;
+  @apply text-5xl font-extrabold;
+}
+code {
+  font-family: Menlo, Monaco, Lucida Console, Liberation Mono, DejaVu Sans Mono,
+    Bitstream Vera Sans Mono, Courier New, monospace;
+  @apply align-middle rounded;
+  @apply px-1.5 py-0.5;
+  @apply text-xs;
+  @apply text-yellow-800 bg-yellow-400;
+}
+strong {
+  @apply text-red-400 italic font-extrabold;
+}
+a {
+  @apply text-red-400;
+  @apply font-extrabold cursor-pointer;
+  @apply underline;
+  @apply hover:opacity-80 duration-100;
+}
