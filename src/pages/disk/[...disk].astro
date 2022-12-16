@@ -6,10 +6,20 @@ import "@/styles/global.css";
 const { disk } = Astro.params;
 ---
 
-<div class="terminal-container">
-  <Stripes />
-  <dob-disk data-content={disk} />
-</div>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.png" />
+    <title>Disk: {disk.substring(0, 4)}...{disk.substring(disk.length - 4)}</title>
+	</head>
+	<body>
+    <div class="terminal-container">
+      <Stripes />
+      <dob-disk data-content={disk} />
+    </div>
+  </body>
+</html>
 
 <script>
   import { BASE, permutations, decode } from "@/utils/encoding";
